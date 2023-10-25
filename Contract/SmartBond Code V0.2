@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SmartBond {
+
+    // State variables
+    address public issuer;
+    address public buyer;
+    string public title = "SmartBond";
+    uint256 public principalAmount = 0.03 ether;
+    uint256 public couponRate;  // e.g., 2% = 200
+    uint256 public maturityPeriod;
+    uint256 public couponFrequency;
+    bool public interestOfInvestment = false;  // IoI
+    uint256 public bondStartTime;  // Timestamp when bond starts
+    uint256 public lastCouponPaidTime;
+
+    // Events
+    event InterestRecorded(address indexed buyer);
+    event BondBought(address indexed buyer, uint256 principalAmount);
+    event CouponClaimed(address indexed buyer, uint256 amount);
+    event PrincipalClaimed(address indexed buyer, uint256 amount);
+
+    // Constructor
+    constructor(uint256 _couponRate, uint256 _maturityYears, uint256 _couponMonths) {
+        issuer = msg.sender;
+        couponRate = _couponRate;
+        maturityPeriod = _maturityYears * 2 minutes;
+        couponFrequency = (_couponMonths / 6) * 1 minutes;
+    }
+
+    modifier onlyIssuer() {
+        require(msg.sender == issuer, "Only the issuer can call this function.");
+        _;
+    }
+
+    modifier onlyBuyer() {
+        require(msg.sender == buyer, "Only the buyer can call this function.");
+        _;
+    }
+
+    modifier bondNotStarted() {
+        require(bondStartTime == 0, "Bond has already started.");
+        _;
+    }
+
+    function expressInterest() external bondNotStarted {
+        require(msg.sender != issuer, "Issuer cannot express interest.");
+        require(!interestOfInvestment, "Interest already recorded.");
+
+        buyer = msg.sender;
+        interestOfInvestment = true;
+
+        emit InterestRecorded(buyer);
+    }
+
+    function confirmInterestAndBuy() external onlyIssuer bondNotStarted {
+        require(interestOfInvestment, "No interest expressed.");
+        
+        bondStartTime = block.timestamp;
+        lastCouponPaidTime = bondStartTime;
+
+        emit BondBought(buyer, principalAmount);
+    }
+
+    function claimCoupon() external onlyBuyer {
+        require(block.timestamp >= lastCouponPaidTime + couponFrequency, "Coupon not yet due.");
+
+        uint256 couponAmount = (principalAmount * couponRate) / 10000;  // Calculate the coupon payment
+        
+        payable(buyer).transfer(couponAmount);
+        lastCouponPaidTime = block.timestamp;
+
+        emit CouponClaimed(buyer, couponAmount);
+    }
+
+    function claimPrincipal() external onlyBuyer {
+        require(block.timestamp >= bondStartTime + maturityPeriod, "Bond maturity not reached.");
+
+        payable(buyer).transfer(principalAmount);
+        
+        emit PrincipalClaimed(buyer, principalAmount);
+    }
+
+    // Allows issuer to deposit funds for coupon and principal payouts
+    function depositFunds() external payable onlyIssuer {}
+
+    // Check contract balance
+    function getBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+}
