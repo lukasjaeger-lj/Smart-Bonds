@@ -7,7 +7,7 @@ contract SmartBond {
     address public issuer;
     address public buyer;
     string public title = "SmartBond";
-    uint256 public principalAmount = 0.03 ether;
+    uint256 public principalAmount;
     uint256 public couponRate;  // e.g., 2% = 200
     uint256 public maturityPeriod;
     uint256 public couponFrequency;
@@ -22,9 +22,10 @@ contract SmartBond {
     event PrincipalClaimed(address indexed buyer, uint256 amount);
 
     // Constructor
-    constructor(uint256 _couponRate, uint256 _maturityYears, uint256 _couponMonths) {
+    constructor(uint256 _principalAmount, uint256 _couponRate, uint256 _maturityYears, uint256 _couponMonths) {
         issuer = msg.sender;
         couponRate = _couponRate;
+        principalAmount = _principalAmount;
         maturityPeriod = _maturityYears * 2 minutes;
         couponFrequency = (_couponMonths / 6) * 1 minutes;
     }
