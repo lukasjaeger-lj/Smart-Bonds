@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract SmartBondToken is ERC20 {
+    address public issuer;
+    uint256 public maturityDate;
+    uint256 public redemptionAmount;
+    uint256 public couponFrequencyMinutes;
+    uint256 public couponAmount;
+    uint256 public lastCouponPaymentTime;
+
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 _totalSupply,
+        uint256 _maturityDate,
+        uint256 _redemptionAmount,
+        uint256 _couponFrequencyMinutes,
+        uint256 _couponAmount
+    ) ERC20(name, symbol) {
+        _mint(msg.sender, _totalSupply);
+        issuer = msg.sender;
+        maturityDate = _maturityDate;
+        redemptionAmount = _redemptionAmount;
+        couponFrequencyMinutes = _couponFrequencyMinutes;
+        couponAmount = _couponAmount;
+        lastCouponPaymentTime = block.timestamp;
+    }
+
+    function redeem() external {
+        require(msg.sender == issuer, "Only the issuer can redeem the bond");
+        require(block.timestamp >= maturityDate, "Bond has not matured yet");
+
+        uint256 balance = balanceOf(issuer);
+        require(balance >= redemptionAmount, "Insufficient balance for redemption");
+
+        _burn(issuer, redemptionAmount);
+    }
+
+    function payCoupon() external {
+        require(msg.sender == issuer, "Only the issuer can pay coupons");
+        require(block.timestamp >= lastCouponPaymentTime + couponFrequencyMinutes * 1 minutes, "Coupon not due yet");
+
+        uint256 balance = balanceOf(issuer);
+        require(balance >= couponAmount, "Insufficient balance for coupon payment");
+
+        transfer(issuer, couponAmount);
+        lastCouponPaymentTime = block.timestamp;
+    }
+}
