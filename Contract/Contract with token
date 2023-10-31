@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SmartBondToken is ERC20 {
     address public issuer;
     uint256 public maturityDate;
-    uint256 public Principle;
+    uint256 public principalAmount;
     uint256 public couponFrequencyMinutes;
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
@@ -16,14 +16,14 @@ contract SmartBondToken is ERC20 {
         string memory symbol,
         uint256 _totalSupply,
         uint256 _maturityDate,
-        uint256 _Principle,
+        uint256 _principalAmount,
         uint256 _couponFrequencyMinutes,
         uint256 _couponAmount
     ) ERC20(name, symbol) {
         _mint(msg.sender, _totalSupply);
         issuer = msg.sender;
         maturityDate = _maturityDate;
-        Principle = _Principle;
+        principalAmount = _principalAmount;
         couponFrequencyMinutes = _couponFrequencyMinutes;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
@@ -34,9 +34,9 @@ contract SmartBondToken is ERC20 {
         require(block.timestamp >= maturityDate, "Bond has not matured yet");
 
         uint256 balance = balanceOf(issuer);
-        require(balance >= Principle, "Insufficient balance for principle");
+        require(balance >= principalAmount, "Insufficient balance for redemption");
 
-        _burn(issuer, Principle);
+        _burn(issuer, principalAmount);
     }
 
     function payCoupon() external {
@@ -48,5 +48,14 @@ contract SmartBondToken is ERC20 {
 
         transfer(issuer, couponAmount);
         lastCouponPaymentTime = block.timestamp;
+    }
+
+    function transferBond(address to, uint256 amount) external {
+        require(msg.sender != issuer, "The issuer cannot transfer bonds.");
+        require(block.timestamp < maturityDate, "Bonds cannot be transferred after maturity.");
+        require(amount > 0, "Amount must be greater than 0.");
+        require(balanceOf(msg.sender) >= amount, "Insufficient balance to transfer.");
+
+        transfer(to, amount);
     }
 }
