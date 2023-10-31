@@ -22,25 +22,25 @@ contract SmartBondToken is ERC20 {
     constructor(
         string memory name,
         string memory symbol,
-        uint256 totalSupply,
-        uint256 maturity, // Maturity specified in minutes
-        uint256 principalAmount,
-        uint256 couponFrequency, // Coupon frequency specified in minutes
-        uint256 couponAmount,
-        uint256 valueInWeiPerToken // Specify the fixed value in Wei
+        uint256 _totalSupply,
+        uint256 _maturity, // Maturity specified in minutes
+        uint256 _principalAmount,
+        uint256 _couponFrequency, // Coupon frequency specified in minutes
+        uint256 _couponAmount,
+        uint256 _valueInWeiPerToken // Specify the fixed value in Wei
     ) ERC20(name, symbol) {
         issuer = msg.sender;
 
         // Convert maturity from minutes to seconds
-        maturityDate = block.timestamp + maturity * 1 minutes;
+        maturityDate = block.timestamp + _maturity * 1 minutes;
 
-        principalAmount = principalAmount;
-        couponFrequency = couponFrequency;
-        couponAmount = couponAmount;
+        principalAmount = _principalAmount;
+        couponFrequency = _couponFrequency;
+        couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
-        valuePerToken = valueInWeiPerToken;
+        valuePerToken = _valueInWeiPerToken;
         
-        _mint(msg.sender, totalSupply);
+        _mint(msg.sender, _totalSupply);
     }
 
     // 4. Functions
@@ -60,11 +60,11 @@ contract SmartBondToken is ERC20 {
         uint256 issuerBalance = balanceOf(issuer);
         
         // Check if the issuer's balance is sufficient to cover all coupon payments
-        require(issuerBalance >= totalSupply * couponAmount, "Insufficient balance for coupon payments");
+        require(issuerBalance >= totalSupply() * couponAmount, "Insufficient balance for coupon payments");
 
         // Iterate through token holders and pay coupon to each eligible holder
-        for (uint256 i = 0; i < totalSupply; i++) {
-            address holder = tokenOfOwnerByIndex(address(this), i);
+        for (uint256 i = 0; i < totalSupply(); i++) {
+            address holder = tokenOfOwnerByIndex(issuer, i);
             uint256 balance = balanceOf(holder);
             if (balance >= couponAmount) {
                 transfer(holder, couponAmount);
