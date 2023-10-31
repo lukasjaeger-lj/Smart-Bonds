@@ -4,15 +4,14 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SmartBondToken is ERC20 {
-
     // 1. Variables
     address public issuer;
     uint256 public maturityDate;
-    uint32 public totalSupply; // Use uint32 for total supply
     uint256 public principalAmount;
     uint256 public couponFrequency;
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
+    uint256 public valuePerToken; // The fixed value per token in Wei (1 Ether = 1e18 Wei)
 
     // 2. Events
     event CouponPayment(address indexed recipient, uint256 amount);
@@ -23,26 +22,39 @@ contract SmartBondToken is ERC20 {
     constructor(
         string memory name,
         string memory symbol,
-        uint32 _totalSupply, // Use uint32 for total supply
-        uint256 _maturity, // Maturity specified in minutes
-        uint256 _principalAmount,
-        uint256 _couponFrequency, // Coupon frequency specified in minutes
-        uint256 _couponAmount
+        uint256 totalSupply,
+        uint256 maturity, // Maturity specified in minutes
+        uint256 principalAmount,
+        uint256 couponFrequency, // Coupon frequency specified in minutes
+        uint256 couponAmount,
+        uint256 valueInWeiPerToken // Specify the fixed value in Wei
     ) ERC20(name, symbol) {
-        _mint(msg.sender, _totalSupply);
         issuer = msg.sender;
 
         // Convert maturity from minutes to seconds
-        maturityDate = block.timestamp + _maturity * 1 minutes;
+        maturityDate = block.timestamp + maturity * 1 minutes;
 
-        totalSupply = _totalSupply; // Assign the provided total supply
-        principalAmount = _principalAmount;
-        couponFrequency = _couponFrequency;
-        couponAmount = _couponAmount;
+        principalAmount = principalAmount;
+        couponFrequency = couponFrequency;
+        couponAmount = couponAmount;
         lastCouponPaymentTime = block.timestamp;
+        valuePerToken = valueInWeiPerToken;
+        
+        _mint(msg.sender, totalSupply);
     }
 
     // 4. Functions
+    function buyTokens(uint256 numTokens) external payable {
+        require(msg.value == numTokens * valuePerToken, "Incorrect payment amount");
+        _mint(msg.sender, numTokens);
+    }
+
+    function sellTokens(uint256 numTokens) external {
+        require(balanceOf(msg.sender) >= numTokens, "Insufficient balance");
+        _burn(msg.sender, numTokens);
+        payable(msg.sender).transfer(numTokens * valuePerToken);
+    }
+
     function payCoupon() external {
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
         uint256 issuerBalance = balanceOf(issuer);
