@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+/// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -7,7 +7,7 @@ contract SmartBondToken is ERC20 {
     address public issuer;
     uint256 public maturityDate;
     uint256 public principalAmount;
-    uint256 public couponFrequencyMinutes;
+    uint256 public couponFrequency;
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
 
@@ -15,33 +15,26 @@ contract SmartBondToken is ERC20 {
         string memory name,
         string memory symbol,
         uint256 _totalSupply,
-        uint256 _maturityDate,
+        uint256 _maturity, // Maturity specified in minutes
         uint256 _principalAmount,
-        uint256 _couponFrequencyMinutes,
+        uint256 _couponFrequency,
         uint256 _couponAmount
     ) ERC20(name, symbol) {
         _mint(msg.sender, _totalSupply);
         issuer = msg.sender;
-        maturityDate = _maturityDate;
+
+        // Convert maturity from minutes to seconds
+        maturityDate = block.timestamp + _maturity * 1 minutes;
+
         principalAmount = _principalAmount;
-        couponFrequencyMinutes = _couponFrequencyMinutes;
+        couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
     }
 
-    function redeem() external {
-        require(msg.sender == issuer, "Only the issuer can redeem the bond");
-        require(block.timestamp >= maturityDate, "Bond has not matured yet");
-
-        uint256 balance = balanceOf(issuer);
-        require(balance >= principalAmount, "Insufficient balance for redemption");
-
-        _burn(issuer, principalAmount);
-    }
-
     function payCoupon() external {
         require(msg.sender == issuer, "Only the issuer can pay coupons");
-        require(block.timestamp >= lastCouponPaymentTime + couponFrequencyMinutes * 1 minutes, "Coupon not due yet");
+        require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
 
         uint256 balance = balanceOf(issuer);
         require(balance >= couponAmount, "Insufficient balance for coupon payment");
@@ -50,12 +43,17 @@ contract SmartBondToken is ERC20 {
         lastCouponPaymentTime = block.timestamp;
     }
 
-    function transferBond(address to, uint256 amount) external {
-        require(msg.sender != issuer, "The issuer cannot transfer bonds.");
-        require(block.timestamp < maturityDate, "Bonds cannot be transferred after maturity.");
-        require(amount > 0, "Amount must be greater than 0.");
-        require(balanceOf(msg.sender) >= amount, "Insufficient balance to transfer.");
+    function isMatured() public view returns (bool) {
+        return block.timestamp >= maturityDate;
+    }
 
-        transfer(to, amount);
+    function redeem() external {
+        require(isMatured(), "Bond has not matured yet");
+        require(msg.sender == issuer, "Only the issuer can redeem the bond");
+
+        uint256 balance = balanceOf(issuer);
+        require(balance >= principalAmount, "Insufficient balance for redemption");
+
+        _burn(issuer, principalAmount);
     }
 }
