@@ -62,9 +62,15 @@ contract SmartBondToken is ERC20 {
         // Check if the issuer's balance is sufficient to cover all coupon payments
         require(issuerBalance >= totalSupply() * couponAmount, "Insufficient balance for coupon payments");
 
-        // Iterate through token holders and pay coupon to each eligible holder
+        // Store token holders separately or use a mapping to track them
+        address[] memory holders = new address[](totalSupply());
         for (uint256 i = 0; i < totalSupply(); i++) {
-            address holder = tokenOfOwnerByIndex(issuer, i);
+            holders[i] = tokenByIndex(i);
+        }
+
+        // Iterate through token holders and pay coupon to each eligible holder
+        for (uint256 i = 0; i < holders.length; i++) {
+            address holder = holders[i];
             uint256 balance = balanceOf(holder);
             if (balance >= couponAmount) {
                 transfer(holder, couponAmount);
