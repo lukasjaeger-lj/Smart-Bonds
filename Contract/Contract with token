@@ -1,9 +1,11 @@
-/// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SmartBondToken is ERC20 {
+
+    // 1. Variables
     address public issuer;
     uint256 public maturityDate;
     uint256 public principalAmount;
@@ -11,13 +13,19 @@ contract SmartBondToken is ERC20 {
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
 
+    // 2. Events
+    event CouponPayment(address indexed recipient, uint256 amount);
+    event MaturityReached();
+    event Redemption(address indexed recipient, uint256 amount);
+
+    // 3. Constructor
     constructor(
         string memory name,
         string memory symbol,
         uint256 _totalSupply,
         uint256 _maturity, // Maturity specified in minutes
         uint256 _principalAmount,
-        uint256 _couponFrequency,
+        uint256 _couponFrequency, // Coupon frequency specified in minutes
         uint256 _couponAmount
     ) ERC20(name, symbol) {
         _mint(msg.sender, _totalSupply);
@@ -32,6 +40,7 @@ contract SmartBondToken is ERC20 {
         lastCouponPaymentTime = block.timestamp;
     }
 
+    // 4. Functions
     function payCoupon() external {
         require(msg.sender == issuer, "Only the issuer can pay coupons");
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
@@ -41,13 +50,15 @@ contract SmartBondToken is ERC20 {
 
         transfer(issuer, couponAmount);
         lastCouponPaymentTime = block.timestamp;
+
+        emit CouponPayment(issuer, couponAmount);
     }
 
     function isMatured() public view returns (bool) {
         return block.timestamp >= maturityDate;
     }
 
-    function redeem() external {
+    function redeem() external { // automatically redeem bond if matured after checking maturity function
         require(isMatured(), "Bond has not matured yet");
         require(msg.sender == issuer, "Only the issuer can redeem the bond");
 
@@ -55,5 +66,7 @@ contract SmartBondToken is ERC20 {
         require(balance >= principalAmount, "Insufficient balance for redemption");
 
         _burn(issuer, principalAmount);
+
+        emit Redemption(issuer, principalAmount);
     }
 }
