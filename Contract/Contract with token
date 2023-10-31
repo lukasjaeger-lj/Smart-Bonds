@@ -8,6 +8,7 @@ contract SmartBondToken is ERC20 {
     // 1. Variables
     address public issuer;
     uint256 public maturityDate;
+    uint32 public totalSupply; // Use uint32 for total supply
     uint256 public principalAmount;
     uint256 public couponFrequency;
     uint256 public couponAmount;
@@ -22,7 +23,7 @@ contract SmartBondToken is ERC20 {
     constructor(
         string memory name,
         string memory symbol,
-        uint256 _totalSupply,
+        uint32 _totalSupply, // Use uint32 for total supply
         uint256 _maturity, // Maturity specified in minutes
         uint256 _principalAmount,
         uint256 _couponFrequency, // Coupon frequency specified in minutes
@@ -34,6 +35,7 @@ contract SmartBondToken is ERC20 {
         // Convert maturity from minutes to seconds
         maturityDate = block.timestamp + _maturity * 1 minutes;
 
+        totalSupply = _totalSupply; // Assign the provided total supply
         principalAmount = _principalAmount;
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
