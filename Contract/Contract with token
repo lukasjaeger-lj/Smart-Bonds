@@ -12,7 +12,9 @@ contract SmartBondToken is ERC20 {
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
     uint256 public valuePerToken; // The fixed value per token in Wei (1 Ether = 1e18 Wei)
-
+    mapping(address => bool) public isTokenHolder; // Mapping to track token holders
+    address[] public tokenHolders; // Array to store token holders
+    
     // 2. Events
     event CouponPayment(address indexed recipient, uint256 amount);
     event MaturityReached();
@@ -47,6 +49,11 @@ contract SmartBondToken is ERC20 {
     function buyTokens(uint256 numTokens) external payable {
         require(msg.value == numTokens * valuePerToken, "Incorrect payment amount");
         _mint(msg.sender, numTokens);
+        
+        if (!isTokenHolder[msg.sender]) {
+            isTokenHolder[msg.sender] = true;
+            tokenHolders.push(msg.sender);
+        }
     }
 
     function sellTokens(uint256 numTokens) external {
@@ -58,19 +65,13 @@ contract SmartBondToken is ERC20 {
     function payCoupon() external {
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
         uint256 issuerBalance = balanceOf(issuer);
-        
+    
         // Check if the issuer's balance is sufficient to cover all coupon payments
         require(issuerBalance >= totalSupply() * couponAmount, "Insufficient balance for coupon payments");
 
-        // Store token holders separately or use a mapping to track them
-        address[] memory holders = new address[](totalSupply());
-        for (uint256 i = 0; i < totalSupply(); i++) {
-            holders[i] = tokenByIndex(i);
-        }
-
-        // Iterate through token holders and pay coupon to each eligible holder
-        for (uint256 i = 0; i < holders.length; i++) {
-            address holder = holders[i];
+        // Pay coupon to all token holders
+        for (uint256 i = 0; i < tokenHolders.length; i++) {
+            address holder = tokenHolders[i];
             uint256 balance = balanceOf(holder);
             if (balance >= couponAmount) {
                 transfer(holder, couponAmount);
