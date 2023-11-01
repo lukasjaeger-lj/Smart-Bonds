@@ -19,7 +19,7 @@ contract SmartBondToken is ERC20 {
     event CouponPayment(address indexed recipient, uint256 amount);
     event MaturityReached();
     event Redemption(address indexed recipient, uint256 principal, uint256 lastCouponAmount);
-    event TokenPurchased(address indexed buyer, uint256 amount, uint256 totalValue);
+    event TokenPurchased(address indexed buyer, uint256 numTokens, uint256 totalValue);
 
     // 3. Constructor
     constructor(
@@ -34,41 +34,41 @@ contract SmartBondToken is ERC20 {
         issuer = msg.sender;
 
         maturityDate = block.timestamp + _maturity * 1 minutes;
-
         principalAmount = _principalAmount;
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
-        _mint(msg.sender, _totalSupply);
+        _mint(issuer, _totalSupply); // Mint tokens to the issuer
     }
 
     // 4. Functions
     function buyTokens(uint256 numTokens) external payable {
         uint256 totalValue = msg.value;
-        require(totalValue == numTokens * principalAmount, "Incorrect payment amount");
+        uint256 purchaseValue = principalAmount * numTokens;
+        require(totalValue == purchaseValue, "Incorrect payment amount");
+        
+        // Mint the desired number of tokens to the buyer
         _mint(msg.sender, numTokens);
-
         emit TokenPurchased(msg.sender, numTokens, totalValue);
         
-        if (!isTokenHolder[msg.sender]) {
-            isTokenHolder[msg.sender] = true;
-            tokenHolders.push(msg.sender);
-        }
+        // Transfer the principal to the issuer
+        payable(issuer).transfer(purchaseValue);
+        
+        // Mark the buyer as a token holder
+        isTokenHolder[msg.sender] = true;
+        tokenHolders.push(msg.sender);
     }
 
     function payCoupon() external {
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
-        uint256 issuerBalance = balanceOf(issuer);
-    
-        require(issuerBalance >= totalSupply() * couponAmount, "Insufficient balance for coupon payments");
-
+        require(block.timestamp < maturityDate, "Maturity reached, no more coupons");
+        require(msg.sender == issuer, "Only issuer can make coupon payments");
+        
+        // Pay coupon to all token holders
         for (uint256 i = 0; i < tokenHolders.length; i++) {
             address holder = tokenHolders[i];
-            uint256 balance = balanceOf(holder);
-            if (balance >= couponAmount) {
-                transfer(holder, couponAmount);
-                emit CouponPayment(holder, couponAmount);
-            }
+            transfer(holder, couponAmount);
+            emit CouponPayment(holder, couponAmount);
         }
 
         lastCouponPaymentTime = block.timestamp;
@@ -80,13 +80,18 @@ contract SmartBondToken is ERC20 {
 
     function redeem() external {
         require(isMatured(), "Bond has not matured yet");
-        require(msg.sender != issuer, "The issuer cannot redeem the bond");
+        require(msg.sender == issuer, "Only the issuer can redeem the bond");
+        require(block.timestamp >= maturityDate, "Maturity not reached, cannot redeem yet");
+
+        // Calculate the total value to send to the bondholder
+        uint256 totalValue = principalAmount + couponAmount;
+
+        // Transfer the total value to the bondholder
+        payable(msg.sender).transfer(totalValue);
         
-        uint256 totalValue = principalAmount + couponAmount; // Total value includes the principal and one last coupon payment
-        
-        require(balanceOf(msg.sender) >= totalValue, "Insufficient balance for redemption");
-        _burn(msg.sender, balanceOf(msg.sender)); // Burn all of the bondholder's tokens
-        payable(msg.sender).transfer(totalValue); // Transfer the total value to the bondholder
+        // Burn the tokens owned by the bondholder
+        _burn(msg.sender, balanceOf(msg.sender));
+
         emit Redemption(msg.sender, principalAmount, couponAmount);
     }
 }
