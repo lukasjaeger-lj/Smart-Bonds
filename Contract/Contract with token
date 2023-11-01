@@ -13,7 +13,7 @@ contract SmartBondToken is ERC20 {
     uint256 public maturityDate;
     uint256 public principalAmount;
     uint256 public couponFrequency;
-    uint256 public couponAmount; // Coupon rate as a percentage
+    uint256 public couponAmount; // Coupon rate as a percentage (2 = 2%)
     uint256 public lastCouponPaymentTime; 
     
     // 2. Events
@@ -26,7 +26,6 @@ contract SmartBondToken is ERC20 {
     constructor(
         string memory name,
         string memory symbol,
-        uint256 _maturity,
         uint256 _principalAmount,
         uint256 _couponFrequency,
         uint256 _couponAmount, // Coupon rate as a percentage
@@ -34,11 +33,11 @@ contract SmartBondToken is ERC20 {
     ) ERC20(name, symbol) {
         issuer = msg.sender;
         maxSupply = _maxSupply;
-        maturityDate = block.timestamp + _maturity * 1 minutes;
         principalAmount = _principalAmount;
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
-        lastCouponPaymentTime = block.timestamp;
+        lastCouponPaymentTime = 0; // Initialize to zero
+        maturityDate = 0; // Initialize to zero
     }
 
     // 4. Functions
@@ -59,6 +58,12 @@ contract SmartBondToken is ERC20 {
         // Mark the buyer as a token holder
         isTokenHolder[msg.sender] = true;
         tokenHolders.push(msg.sender);
+
+        // If this is the first token purchase, set the maturityDate and lastCouponPaymentTime
+        if (maturityDate == 0) {
+            maturityDate = block.timestamp + couponFrequency * 1 minutes;
+            lastCouponPaymentTime = block.timestamp;
+        }
     }
 
     function payCoupon() external {
@@ -80,6 +85,20 @@ contract SmartBondToken is ERC20 {
         }
 
         lastCouponPaymentTime = block.timestamp;
+    }
+
+    function timeUntilNextCoupon() public view returns (uint256) {
+        if (lastCouponPaymentTime == 0 || block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return (lastCouponPaymentTime + couponFrequency * 1 minutes) - block.timestamp;
+    }
+
+    function timeUntilMaturity() public view returns (uint256) {
+        if (block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return maturityDate - block.timestamp;
     }
 
     function isMatured() public view returns (bool) {
@@ -107,3 +126,4 @@ contract SmartBondToken is ERC20 {
         emit Redemption(msg.sender, principalAmount, ((principalAmount * couponAmount) / 100));
     }
 }
+
