@@ -63,16 +63,23 @@ contract SmartBondToken is ERC20 {
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
         require(block.timestamp < maturityDate, "Maturity reached, no more coupons");
         require(msg.sender == issuer, "Only issuer can make coupon payments");
-        
-        // Pay coupon to all token holders
+    
+        // Calculate the coupon payment amount
+        uint256 couponPaymentAmount = couponAmount * tokenHolders.length;
+
+        // Check if the issuer's balance is sufficient to cover the coupon payments
+        uint256 issuerBalance = balanceOf(issuer);
+        require(issuerBalance >= couponPaymentAmount, "Insufficient balance for coupon payments");
+
         for (uint256 i = 0; i < tokenHolders.length; i++) {
             address holder = tokenHolders[i];
             transfer(holder, couponAmount);
             emit CouponPayment(holder, couponAmount);
-        }
+            }
 
         lastCouponPaymentTime = block.timestamp;
     }
+
 
     function isMatured() public view returns (bool) {
         return block.timestamp >= maturityDate;
@@ -83,15 +90,23 @@ contract SmartBondToken is ERC20 {
         require(msg.sender == issuer, "Only the issuer can redeem the bond");
         require(block.timestamp >= maturityDate, "Maturity not reached, cannot redeem yet");
 
-        // Calculate the total value to send to the bondholder
+        // Calculate the total value to send to each bondholder
         uint256 totalValue = principalAmount + couponAmount;
+    
+        // Check if the issuer's balance is sufficient to cover all redemptions
+        uint256 issuerBalance = balanceOf(issuer);
+        require(issuerBalance >= totalValue * tokenHolders.length, "Insufficient balance for redemptions");
 
-        // Transfer the total value to the bondholder
-        payable(msg.sender).transfer(totalValue);
+        for (uint256 i = 0; i < tokenHolders.length; i++) {
+            address holder = tokenHolders[i];
         
-        // Burn the tokens owned by the bondholder
-        _burn(msg.sender, balanceOf(msg.sender));
-
-        emit Redemption(msg.sender, principalAmount, couponAmount);
+            // Transfer the total value to the bondholder
+            payable(holder).transfer(totalValue);
+        
+            // Burn the tokens owned by the bondholder
+            _burn(holder, balanceOf(holder));
+        
+            emit Redemption(holder, principalAmount, couponAmount);
+        }
     }
 }
