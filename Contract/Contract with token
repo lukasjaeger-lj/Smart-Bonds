@@ -11,44 +11,44 @@ contract SmartBondToken is ERC20 {
     uint256 public couponFrequency;
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
-    uint256 public valuePerToken; // The fixed value per token in Wei (1 Ether = 1e18 Wei)
-    mapping(address => bool) public isTokenHolder; // Mapping to track token holders
-    address[] public tokenHolders; // Array to store token holders
+    
+    mapping(address => bool) public isTokenHolder;
+    address[] public tokenHolders;
     
     // 2. Events
     event CouponPayment(address indexed recipient, uint256 amount);
     event MaturityReached();
     event Redemption(address indexed recipient, uint256 amount);
+    event TokenPurchased(address indexed buyer, uint256 amount);
 
     // 3. Constructor
     constructor(
         string memory name,
         string memory symbol,
         uint256 _totalSupply,
-        uint256 _maturity, // Maturity specified in minutes
+        uint256 _maturity,
         uint256 _principalAmount,
-        uint256 _couponFrequency, // Coupon frequency specified in minutes
-        uint256 _couponAmount,
-        uint256 _valueInWeiPerToken // Specify the fixed value in Wei
+        uint256 _couponFrequency,
+        uint256 _couponAmount
     ) ERC20(name, symbol) {
         issuer = msg.sender;
 
-        // Convert maturity from minutes to seconds
         maturityDate = block.timestamp + _maturity * 1 minutes;
 
         principalAmount = _principalAmount;
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
-        valuePerToken = _valueInWeiPerToken;
-        
+
         _mint(msg.sender, _totalSupply);
     }
 
     // 4. Functions
     function buyTokens(uint256 numTokens) external payable {
-        require(msg.value == numTokens * valuePerToken, "Incorrect payment amount");
+        require(msg.value == principalAmount * numTokens, "Incorrect payment amount");
         _mint(msg.sender, numTokens);
+        
+        emit TokenPurchased(msg.sender, numTokens);
         
         if (!isTokenHolder[msg.sender]) {
             isTokenHolder[msg.sender] = true;
@@ -56,20 +56,12 @@ contract SmartBondToken is ERC20 {
         }
     }
 
-    function sellTokens(uint256 numTokens) external {
-        require(balanceOf(msg.sender) >= numTokens, "Insufficient balance");
-        _burn(msg.sender, numTokens);
-        payable(msg.sender).transfer(numTokens * valuePerToken);
-    }
-
     function payCoupon() external {
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
         uint256 issuerBalance = balanceOf(issuer);
     
-        // Check if the issuer's balance is sufficient to cover all coupon payments
         require(issuerBalance >= totalSupply() * couponAmount, "Insufficient balance for coupon payments");
 
-        // Pay coupon to all token holders
         for (uint256 i = 0; i < tokenHolders.length; i++) {
             address holder = tokenHolders[i];
             uint256 balance = balanceOf(holder);
@@ -86,16 +78,16 @@ contract SmartBondToken is ERC20 {
         return block.timestamp >= maturityDate;
     }
 
-    function redeem() external { // automatically redeem bond if matured after checking maturity function
+    function redeem() external {
         require(isMatured(), "Bond has not matured yet");
         require(msg.sender == issuer, "Only the issuer can redeem the bond");
 
-        uint256 balance = balanceOf(msg.sender); // Get the bondholder's balance
+        uint256 balance = balanceOf(msg.sender);
         require(balance >= principalAmount, "Insufficient balance for redemption");
 
-        _burn(msg.sender, principalAmount); // Burn the bond tokens from the bondholder
-        payable(msg.sender).transfer(principalAmount); // Transfer the principal to the bondholder
+        _burn(msg.sender, principalAmount);
+        payable(msg.sender).transfer(principalAmount);
 
-        emit Redemption(msg.sender, principalAmount); // Emit the Redemption event for the bondholder
+        emit Redemption(msg.sender, principalAmount);
     }
 }
