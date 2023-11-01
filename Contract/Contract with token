@@ -5,15 +5,15 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SmartBondToken is ERC20 {
     // 1. Variables
+    mapping(address => bool) public isTokenHolder;
+    address[] public tokenHolders;
+
     address public issuer;
     uint256 public maturityDate;
     uint256 public principalAmount;
     uint256 public couponFrequency;
     uint256 public couponAmount;
     uint256 public lastCouponPaymentTime;
-    
-    mapping(address => bool) public isTokenHolder;
-    address[] public tokenHolders;
     
     // 2. Events
     event CouponPayment(address indexed recipient, uint256 amount);
