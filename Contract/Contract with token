@@ -18,8 +18,8 @@ contract SmartBondToken is ERC20 {
     // 2. Events
     event CouponPayment(address indexed recipient, uint256 amount);
     event MaturityReached();
-    event Redemption(address indexed recipient, uint256 amount);
-    event TokenPurchased(address indexed buyer, uint256 amount);
+    event Redemption(address indexed recipient, uint256 principal, uint256 lastCouponAmount);
+    event TokenPurchased(address indexed buyer, uint256 amount, uint256 totalValue);
 
     // 3. Constructor
     constructor(
@@ -39,16 +39,16 @@ contract SmartBondToken is ERC20 {
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = block.timestamp;
-
         _mint(msg.sender, _totalSupply);
     }
 
     // 4. Functions
     function buyTokens(uint256 numTokens) external payable {
-        require(msg.value == principalAmount * numTokens, "Incorrect payment amount");
+        uint256 totalValue = msg.value;
+        require(totalValue == numTokens * principalAmount, "Incorrect payment amount");
         _mint(msg.sender, numTokens);
-        
-        emit TokenPurchased(msg.sender, numTokens);
+
+        emit TokenPurchased(msg.sender, numTokens, totalValue);
         
         if (!isTokenHolder[msg.sender]) {
             isTokenHolder[msg.sender] = true;
@@ -80,14 +80,13 @@ contract SmartBondToken is ERC20 {
 
     function redeem() external {
         require(isMatured(), "Bond has not matured yet");
-        require(msg.sender == issuer, "Only the issuer can redeem the bond");
-
-        uint256 balance = balanceOf(msg.sender);
-        require(balance >= principalAmount, "Insufficient balance for redemption");
-
-        _burn(msg.sender, principalAmount);
-        payable(msg.sender).transfer(principalAmount);
-
-        emit Redemption(msg.sender, principalAmount);
+        require(msg.sender != issuer, "The issuer cannot redeem the bond");
+        
+        uint256 totalValue = principalAmount + couponAmount; // Total value includes the principal and one last coupon payment
+        
+        require(balanceOf(msg.sender) >= totalValue, "Insufficient balance for redemption");
+        _burn(msg.sender, balanceOf(msg.sender)); // Burn all of the bondholder's tokens
+        payable(msg.sender).transfer(totalValue); // Transfer the total value to the bondholder
+        emit Redemption(msg.sender, principalAmount, couponAmount);
     }
 }
