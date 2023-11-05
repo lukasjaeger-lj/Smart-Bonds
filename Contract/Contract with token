@@ -118,6 +118,11 @@ contract SmartBondToken is ERC20 {
         return block.timestamp >= maturityDate;
     }
 
+    function repay() external payable {
+        require(isMatured(), "Bond has not matured yet");
+        issuerBalance += msg.value;
+    }
+
     function redeem() external {
         require(isMatured(), "Bond has not matured yet");
         require(isTokenHolder[msg.sender], "Only token holders can redeem the bond");
