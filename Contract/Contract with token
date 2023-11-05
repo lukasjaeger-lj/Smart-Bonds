@@ -9,9 +9,11 @@ contract SmartBondToken is ERC20 {
     address[] public tokenHolders;
 
     address public issuer;
+    uint256 public issuerBalance;
     uint256 public maxSupply;
     uint256 public maturityDate;
     uint256 public principalAmount;
+    uint256 public timeToMaturity;
     uint256 public couponFrequency;
     uint256 public couponAmount; // Coupon rate as a percentage (2 = 2%)
     uint256 public lastCouponPaymentTime; 
@@ -27,6 +29,7 @@ contract SmartBondToken is ERC20 {
         string memory name,
         string memory symbol,
         uint256 _principalAmount,
+        uint256 _timeToMaturity,
         uint256 _couponFrequency,
         uint256 _couponAmount, // Coupon rate as a percentage
         uint256 _maxSupply
@@ -34,6 +37,7 @@ contract SmartBondToken is ERC20 {
         issuer = msg.sender;
         maxSupply = _maxSupply;
         principalAmount = _principalAmount;
+        timeToMaturity = _timeToMaturity;
         couponFrequency = _couponFrequency;
         couponAmount = _couponAmount;
         lastCouponPaymentTime = 0; // Initialize to zero
@@ -61,30 +65,39 @@ contract SmartBondToken is ERC20 {
 
         // If this is the first token purchase, set the maturityDate and lastCouponPaymentTime
         if (maturityDate == 0) {
-            maturityDate = block.timestamp + couponFrequency * 1 minutes;
+            maturityDate = block.timestamp + timeToMaturity * 1 minutes;
             lastCouponPaymentTime = block.timestamp;
         }
     }
 
-    function payCoupon() external {
+    function payCoupon() external payable {
+        // Ensure that the coupon payment is due
         require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
+
+        // Ensure that the bond has not reached maturity
         require(block.timestamp < maturityDate, "Maturity reached, no more coupons");
+
+        // Ensure that the sender is the issuer
         require(msg.sender == issuer, "Only issuer can make coupon payments");
-    
+
         // Calculate the coupon payment amount as a percentage of the principal
         uint256 couponPaymentAmount = (principalAmount * couponAmount) / 100;
 
-        // Check if the issuer's balance is sufficient to cover the coupon payments
-        uint256 issuerBalance = balanceOf(issuer);
-        require(issuerBalance >= couponPaymentAmount * tokenHolders.length, "Insufficient balance for coupon payments");
+        // Deduct the coupon payment amount from the issuer's balance
+        issuerBalance -= couponPaymentAmount * tokenHolders.length;
 
         for (uint256 i = 0; i < tokenHolders.length; i++) {
             address holder = tokenHolders[i];
-            transfer(holder, couponPaymentAmount);
+            payable(holder).transfer(couponPaymentAmount);
             emit CouponPayment(holder, couponPaymentAmount);
         }
 
+        // Update the last coupon payment time to the current block timestamp
         lastCouponPaymentTime = block.timestamp;
+    }
+
+    function viewIssuerBalance() public view virtual returns (uint256) {
+        return issuerBalance;
     }
 
     function timeUntilNextCoupon() public view returns (uint256) {
@@ -113,9 +126,11 @@ contract SmartBondToken is ERC20 {
         // Calculate the total value to send to the bondholder
         uint256 totalValue = principalAmount + ((principalAmount * couponAmount) / 100);
 
+        // Deduct the total value from the issuer's balance
+        issuerBalance -= totalValue;
+
         // Check if the issuer's balance is sufficient to cover all redemptions
-        uint256 issuerBalance = balanceOf(issuer);
-        require(issuerBalance >= totalValue, "Insufficient balance for redemptions");
+        require(issuerBalance >= 0, "Insufficient balance for redemptions");
 
         // Transfer the total value to the bondholder
         payable(msg.sender).transfer(totalValue);
