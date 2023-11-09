@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.22;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract SmartBondToken is ERC20 {
+    // 1. Variables
+    address[] public tokenHolders;
+
+
+    address public issuer;
+    uint256 public issuerBalance;
+    uint256 public maxSupply;
+    uint256 public maturityDate;
+    uint256 public principalAmount;
+    uint256 public couponFrequency;
+    uint256 public timeToMaturity;
+    uint256 public couponAmount; // Coupon rate as a percentage (2 = 2%)
+    uint256 public lastCouponPaymentTime; 
+    
+    // 2. Events
+    event CouponPayment(address indexed recipient, uint256 amount);
+    event MaturityReached();
+    event Redemption(address indexed recipient, uint256 principal, uint256 lastCouponAmount);
+    event TokenPurchased(address indexed buyer, uint256 numTokens, uint256 totalValue);
+
+    // 3. Constructor
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 _principalAmount,
+        uint256 _couponFrequency,
+        uint256 _couponAmount, // Coupon rate as a percentage
+        uint256 _maxSupply,
+        uint256 _timeToMaturity
+    ) ERC20(name, symbol) {
+        issuer = msg.sender;
+        maxSupply = _maxSupply;
+        principalAmount = _principalAmount;
+        couponFrequency = _couponFrequency;
+        couponAmount = _couponAmount;
+        timeToMaturity = _timeToMaturity;
+        lastCouponPaymentTime = 0; // Initialize to zero
+        maturityDate = 0; // Initialize to zero
+    }
+
+    // 4. Functions
+    function buyTokens(uint256 numTokens) external payable {
+        require(totalSupply() + numTokens <= maxSupply, "Exceeds maximum supply");
+
+        uint256 purchaseValue = principalAmount * numTokens;
+        require(msg.value == purchaseValue, "Incorrect payment amount");
+        
+        // Save buyer adresse if not saved allready
+        if(balanceOf(msg.sender) == 0) tokenHolders.push(msg.sender);
+
+        // Mint the desired number of tokens to the buyer
+        _mint(msg.sender, numTokens);
+        emit TokenPurchased(msg.sender, numTokens, msg.value);
+        
+        // Transfer the principal to the issuer
+        payable(issuer).transfer(purchaseValue);
+
+        // If this is the first token purchase, set the maturityDate and lastCouponPaymentTime
+        if (maturityDate == 0) {
+            maturityDate = block.timestamp + timeToMaturity * 1 minutes;
+            lastCouponPaymentTime = block.timestamp;
+        }
+    }
+
+    function payCoupon() external payable{
+        require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
+        require(block.timestamp < maturityDate, "Maturity reached, no more coupons");
+        require(msg.sender == issuer, "Only issuer can make coupon payments");
+    
+        // Calculate the coupon payment amount as a percentage of the principal
+        uint256 couponPaymentAmount = (principalAmount * couponAmount) / 100;
+
+        // Check if the issuer's balance is sufficient to cover the coupon payments
+        require(msg.value >= couponPaymentAmount * totalSupply(), "Insufficient balance for coupon payments");
+
+        for (uint256 i = 0; i < tokenHolders.length; i++) {
+            address holder = tokenHolders[i];
+            payable(holder).transfer(couponPaymentAmount * balanceOf(holder));
+            emit CouponPayment(holder, couponPaymentAmount);
+        }
+
+        lastCouponPaymentTime = block.timestamp;
+    }
+
+    function viewIssuerBalance() public view virtual returns (uint256) {
+        return issuerBalance;
+    }
+
+    function timeUntilNextCoupon() public view returns (uint256) {
+        if (lastCouponPaymentTime == 0 || block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return (lastCouponPaymentTime + couponFrequency * 1 minutes) - block.timestamp;
+    }
+
+    function timeUntilMaturity() public view returns (uint256) {
+        if (block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return maturityDate - block.timestamp;
+    }
+
+    function isMatured() public view returns (bool) {
+        return block.timestamp >= maturityDate;
+    }
+
+    function repay() external payable {
+        issuerBalance += msg.value;
+    }
+
+    function redeem() external {
+        require(isMatured(), "Bond has not matured yet");
+        require(balanceOf(msg.sender) > 0, "Only token holders can redeem the bond");
+
+        // Calculate the total value to send to the bondholder
+        uint256 totalValue = balanceOf(msg.sender) * (principalAmount + ((principalAmount * couponAmount) / 100));
+
+        // Check if the issuer's balance is sufficient to cover all redemptions
+        require(issuerBalance >= totalValue, "Insufficient balance for redemptions");
+
+        // Deduct the total value from the issuer's balance
+        issuerBalance -= totalValue;
+
+        // Transfer the total value to the bondholder
+        payable(msg.sender).transfer(totalValue);
+        
+
+        // Burn the tokens owned by the bondholder
+        _burn(msg.sender, balanceOf(msg.sender));
+
+        emit Redemption(msg.sender, principalAmount, ((principalAmount * couponAmount) / 100));
+    }
+}
