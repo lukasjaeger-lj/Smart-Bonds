@@ -111,6 +111,9 @@ contract SmartBondToken is ERC20 {
     }
 
     function repay() external payable {
+        require(isMatured(), "Bond has not matured yet");
+        uint256 totalValue = totalSupply() * (principalAmount + ((principalAmount * couponAmount) / 100));
+        require(msg.value == totalValue, "Incorrect payment amount");
         issuerBalance += msg.value;
     }
 
