@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.22;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract SmartBondToken is ERC20 {
+    // 1. Variables
+    address[] public tokenHolders;
+
+
+    address public issuer;
+    uint256 public maxSupply;
+    uint256 public maturityDate;
+    uint256 public timeToMaturity;
+    uint256 public principalAmount;
+    uint256 public couponFrequency; //time between coupon payments in minutes
+    uint256 public couponRate; // Coupon rate as a percentage (2 = 2%)
+    uint256 public couponAmount;
+    uint256 public lastCouponPaymentTime; 
+    
+    // 2. Events
+    event TokenPurchased(address indexed buyer, uint256 numTokens, uint256 totalValue);
+    event CouponPayment(address indexed recipient, uint256 amount);
+    event MaturityReached();
+    event Redemption(address indexed recipient, uint256 principal, uint256 lastCouponAmount);
+
+    // 3. Constructor
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 _principalAmount,
+        uint256 _timeToMaturity,
+        uint256 _couponFrequency,
+        uint256 _couponRate, // Coupon rate as a percentage
+        uint256 _maxSupply
+
+    ) ERC20(name, symbol) {
+        issuer = msg.sender;
+        maxSupply = _maxSupply;
+        principalAmount = _principalAmount;
+        timeToMaturity = _timeToMaturity;
+        couponFrequency = _couponFrequency;
+        couponRate = _couponRate;
+        couponAmount = (principalAmount * couponRate) / 100;
+    }
+
+    // 4. Functions
+
+    function remainingTimeToMaturity() public view returns (uint256) {
+        if (block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return maturityDate - block.timestamp;
+    }
+
+    function isMatured() public view returns (bool) {
+        return block.timestamp >= maturityDate;
+    }
+
+    function timeUntilNextCoupon() public view returns (uint256) {
+        if (lastCouponPaymentTime == 0 || block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return (lastCouponPaymentTime + couponFrequency * 1 minutes) - block.timestamp;
+    }
+
+    //Check if a adress is already saved and add it otherwise
+    function _addTokenHolder(address _address) internal {
+        bool isTokenHolder = false;
+        for (uint i = 0; i < tokenHolders.length; i++) {
+            if (tokenHolders[i] == _address) {
+                isTokenHolder = true;
+                break;
+            }
+        }
+        if (!isTokenHolder) {
+            tokenHolders.push(_address);
+        }
+    }
+
+    function totalCouponPayment() public view returns (uint256){
+        return couponAmount * totalSupply();
+    }
+
+    function totalRepaymentAmount() public view returns (uint256){
+        return (couponAmount + principalAmount) * totalSupply();
+    }
+
+    function buyTokens(uint256 numTokens) external payable {
+        require(totalSupply() + numTokens <= maxSupply, "Exceeds maximum supply");
+
+        uint256 purchaseValue = principalAmount * numTokens;
+        require(msg.value == purchaseValue, "Incorrect payment amount");
+        
+        // Save buyer adresse if not saved already
+        _addTokenHolder(msg.sender);
+
+        // Mint the desired number of tokens to the buyer
+        _mint(msg.sender, numTokens);
+        emit TokenPurchased(msg.sender, numTokens, msg.value);
+        
+        // Transfer the principal to the issuer
+        payable(issuer).transfer(purchaseValue);
+
+        // If this is the first token purchase, set the maturityDate and lastCouponPaymentTime
+        if (maturityDate == 0) {
+            maturityDate = block.timestamp + timeToMaturity * 1 minutes;
+            lastCouponPaymentTime = block.timestamp;
+        }
+    }
+
+    //add address of new token holder and transfer token
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        _addTokenHolder(to);
+        return super.transfer(to, amount);
+    }
+
+    //add address of new token holder and transfer token from allowance
+    function transferFrom(address from, address to, uint256 value) public override returns (bool){
+        _addTokenHolder(to);
+        return super.transferFrom(from, to, value);
+    }
+
+    function payCoupon() external payable {
+        require(block.timestamp >= lastCouponPaymentTime + couponFrequency * 1 minutes, "Coupon not due yet");
+        require(block.timestamp < maturityDate, "Maturity reached, no more coupons");
+        require(msg.sender == issuer, "Only issuer can make coupon payments");
+    
+        // Check if the issuer's balance is sufficient to cover the coupon payments
+        require(msg.value >= couponAmount * totalSupply(), "Insufficient balance for coupon payments");
+
+        for (uint256 i = 0; i < tokenHolders.length; i++) {
+            address holder = tokenHolders[i];
+            payable(holder).transfer(couponAmount * balanceOf(holder));
+            emit CouponPayment(holder, couponAmount);
+        }
+
+        //update last coupon payment time
+        lastCouponPaymentTime = lastCouponPaymentTime + couponFrequency * 1 minutes;
+    }
+
+    //allows issuer to repay principal
+    function repay() external payable {
+        require(isMatured(), "Bond has not matured yet");
+        uint256 _totalValue = totalSupply() * (principalAmount + couponAmount);
+        require(msg.value == _totalValue, "Incorrect payment amount");
+        
+        for (uint256 i = 0; i < tokenHolders.length; i++) {
+            address holder = tokenHolders[i];
+            payable(holder).transfer((couponAmount + principalAmount) * balanceOf(holder));
+            emit Redemption(holder, principalAmount, couponAmount);
+            _burn(holder, balanceOf(holder));
+        }
+    }
+
+    
+}
