@@ -5,8 +5,8 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract SmartBondToken is ERC20 {
     // 1. Variables
-    address[] public tokenHolders;
 
+    address[] public tokenHolders;
 
     address public issuer;
     uint256 public maxSupply;
