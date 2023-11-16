@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.22;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract SmartBondToken is ERC20 {
+    // 1. Variables
+    mapping(address account => uint256) public couponsRedeemed;
+
+    address public issuer;
+    uint256 public maxSupply;
+    uint256 public maturityDate;
+    uint256 public timeToMaturity;
+    uint256 public principalAmount;
+    uint256 public couponFrequency; //time between coupon payments in minutes
+    uint256 public couponRate; // Coupon rate as a percentage (2 = 2%)
+    uint256 public couponAmount;
+    uint256 public numCoupons;
+    uint256 public couponsPaid;
+    uint256 public startTime;
+    bool public isRepaid;
+    
+    // 2. Events
+    event TokenPurchased(address indexed buyer, uint256 numTokens, uint256 totalValue);
+    event CouponPayment(uint256 amount);
+    event MaturityReached();
+    event Redemption(address indexed recipient, uint256 Amount);
+    event CouponPaymentMissed();
+    event RepaymentMissed();
+    
+    // 3. Constructor
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 _principalAmount,
+        uint256 _timeToMaturity,
+        uint256 _couponFrequency,
+        uint256 _couponRate, // Coupon rate as a percentage
+        uint256 _maxSupply
+
+    ) ERC20(name, symbol) {
+        issuer = msg.sender;
+        maxSupply = _maxSupply;
+        principalAmount = _principalAmount;
+        timeToMaturity = _timeToMaturity;
+        couponFrequency = _couponFrequency;
+        couponRate = _couponRate;
+        couponAmount = (principalAmount * couponRate) / 100;
+        numCoupons = timeToMaturity / couponFrequency;
+    }
+
+    // 4. Functions
+
+    function remainingTimeToMaturity() public view returns (uint256) {
+        if (block.timestamp >= maturityDate) {
+            return 0;
+        }
+        return maturityDate - block.timestamp;
+    }
+
+    function isMatured() public view returns (bool) {
+        return block.timestamp >= maturityDate;
+    }
+
+    function period() public view returns (uint256){
+        uint256 passed = block.timestamp - startTime;
+        uint _period = passed / (couponFrequency * 1 minutes) + 1;
+        if(_period > numCoupons + 1){
+            _period = numCoupons + 1;
+        }
+        return _period;
+    }
+
+    function timeUntilNextCoupon() public view returns (uint256) {
+        if(isMatured()) return 0;
+        else return period() * couponFrequency * 1 minutes - block.timestamp;
+    }
+
+
+    function unpaidCoupons() public view returns (uint256){
+        if(period() > numCoupons) return numCoupons - couponsPaid;
+        else return period() - couponsPaid;
+    }
+
+    function totalCouponPayment() public view returns (uint256){
+        return couponAmount * totalSupply() * unpaidCoupons();
+    }
+
+    function totalRepaymentAmount() public view returns (uint256){
+        return principalAmount * totalSupply();
+    }
+
+    function buyTokens(uint256 numTokens) external payable {
+        require(totalSupply() + numTokens <= maxSupply, "Exceeds maximum supply");
+
+        uint256 purchaseValue = principalAmount * numTokens;
+        require(msg.value == purchaseValue, "Incorrect payment amount");
+        
+        // Mint the desired number of tokens to the buyer
+        _mint(msg.sender, numTokens);
+        emit TokenPurchased(msg.sender, numTokens, msg.value);
+        
+        // Transfer the principal to the issuer
+        payable(issuer).transfer(purchaseValue);
+
+        // If this is the first token purchase, set the maturityDate and lastCouponPaymentTime
+        if (maturityDate == 0) {
+            startTime = block.timestamp;
+            maturityDate =  startTime + timeToMaturity * 1 minutes;
+        }
+    }
+
+    function payCoupon() external payable {
+        require(msg.sender == issuer, "Only issuer can make coupon payments");
+        require(unpaidCoupons() > 0, "All Coupons have been paid");
+    
+        // Check if the issuer's balance is sufficient to cover the coupon payments
+        require(msg.value == unpaidCoupons() * couponAmount * totalSupply(), "Payment amount incorrect");
+
+        // update coupons paid
+        couponsPaid = couponsPaid + unpaidCoupons();
+
+        emit CouponPayment(unpaidCoupons());
+    }
+
+    //allows issuer to repay principal
+    function repay() external payable {
+        require(msg.value == totalSupply() * principalAmount, "Incorrect payment amount");
+        isRepaid = true;
+    }
+
+    function redeemableCouponsOf(address _address) public view returns(uint256){
+        uint256 redeemableCoupons = period() - 1;
+
+        if(redeemableCoupons > couponsPaid){
+            //max number of coupons that can be redeemd 
+            redeemableCoupons = couponsPaid;
+        }
+
+        //subtract coupons already redeemd
+        return redeemableCoupons - couponsRedeemed[_address];
+    }
+
+    //redeem pricipal and last coupon after maturity is reached
+    function redeemableAmountOf(address _address) public view returns(uint256) {
+
+        // calculate the total value to be send to the tokenholder without principal
+        uint256 _totalValue = balanceOf(_address) * redeemableCouponsOf(_address) * couponAmount;
+
+        // check if maturity is reached
+        if(isMatured()){
+            // check if issuer has repaid
+            if(isRepaid){
+                //add principal to redemtion total
+                _totalValue = _totalValue + balanceOf(_address) * principalAmount;
+            }
+        }
+        return _totalValue;    
+    }
+
+    function redeem() external{
+        require(balanceOf(msg.sender) > 0, "Only token holders can redeem the bond");
+        
+        // check if maturity is reached
+        if(isMatured()){
+            emit MaturityReached();
+            // check if issuer has repaid
+            if(!isRepaid) emit RepaymentMissed();
+        }
+
+        // check for missed coupon payments
+        if(period() - 1 > couponsPaid) emit CouponPaymentMissed();
+
+        // calculate redeemable amount
+        uint256 _totalValue = redeemableAmountOf(msg.sender);
+
+        // transfer the total value to the bondholder
+        payable(msg.sender).transfer(_totalValue);
+
+        // update number of redeemed coupons
+        couponsRedeemed[msg.sender] = couponsRedeemed[msg.sender] + redeemableCouponsOf(msg.sender);
+
+        // burn the tokens owned of the tokenholder if principal is repaid
+        if(isRepaid) _burn(msg.sender, balanceOf(msg.sender));
+
+        emit Redemption(msg.sender, _totalValue);
+    }
+}
