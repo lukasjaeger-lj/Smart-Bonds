@@ -74,7 +74,7 @@ contract SmartBondToken is ERC20 {
 
     function timeUntilNextCoupon() public view returns (uint256) {
         if(isMatured()) return 0;
-        else return period() * couponFrequency * 1 minutes - block.timestamp;
+        else return startTime + period() * couponFrequency * 1 minutes - block.timestamp;
     }
 
 
@@ -97,7 +97,7 @@ contract SmartBondToken is ERC20 {
         // if not set couponsRedeemed to the same value as sender
         if(balanceOf(to) == 0) couponsRedeemed[to] = couponsRedeemed[msg.sender];
         // if recipient already owns tokens check if they have both the same number of coupons redeemed and cancel the transaction otherwise
-        else require(couponsRedeemed[to] == couponsRedeemed[msg.sender], "Redeem coupons first");
+        else require(couponsRedeemed[to] == couponsRedeemed[msg.sender], "Make sure both parties have redeemed coupons");
         return super.transfer(to, amount);
     }
 
@@ -108,7 +108,7 @@ contract SmartBondToken is ERC20 {
         if(balanceOf(to) == 0) couponsRedeemed[to] = couponsRedeemed[from];
         // if recipient already owns tokens check if both have the same number of coupons redeemed and cancel the transaction otherwise
         // note that it is possible to transfer tokens with unredeemed coupons if the recipient has not redeemed his coupon either
-        else require(couponsRedeemed[to] == couponsRedeemed[from], "Redeem coupons first");
+        else require(couponsRedeemed[to] == couponsRedeemed[from], "Make sure both parties have redeemed coupons");
         return super.transferFrom(from, to, value);
     }
 
@@ -121,6 +121,8 @@ contract SmartBondToken is ERC20 {
 
         uint256 purchaseValue = principalAmount * numTokens;
         require(msg.value == purchaseValue, "Incorrect payment amount");
+
+        require(msg.value == principalAmount * numTokens, "Incorrect payment amount");
         
         // make sure buyers who already own tokens have no coupon payments pending
         require(balanceOf(msg.sender) == 0 || couponsRedeemed[msg.sender] == period() - 1, "Redeem coupons or wait for issuer to pay");
