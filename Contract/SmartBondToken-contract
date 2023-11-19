@@ -51,6 +51,7 @@ contract SmartBondToken is ERC20 {
 
     // 4. Functions
 
+    // returns remaing Time to maturity
     function remainingTimeToMaturity() public view returns (uint256) {
         if (block.timestamp >= maturityDate) {
             return 0;
@@ -58,10 +59,12 @@ contract SmartBondToken is ERC20 {
         return maturityDate - block.timestamp;
     }
 
+    // returns true if maturity is reached
     function isMatured() public view returns (bool) {
         return block.timestamp >= maturityDate;
     }
 
+    // returns 0 if no token has been sold, 1 after the first tokens has been sold, 2 after the first coupon is due and so on
     function period() public view returns (uint256){
         if(startTime == 0) return 0;
         uint256 passed = block.timestamp - startTime;
@@ -72,36 +75,41 @@ contract SmartBondToken is ERC20 {
         return _period;
     }
 
+    // returns time left until the next coupon is due
     function timeUntilNextCoupon() public view returns (uint256) {
         if(isMatured()) return 0;
         else return startTime + period() * couponFrequency * 1 minutes - block.timestamp;
     }
 
 
+    // returns the number of unpaid coupons including the upcomming one
     function unpaidCoupons() public view returns (uint256){
         if(period() > numCoupons) return numCoupons - couponsPaid;
         else return period() - couponsPaid;
     }
 
+    // returns to total coupon payment amount for all tokens in circulation
     function totalCouponPayment() public view returns (uint256){
         return couponAmount * totalSupply() * unpaidCoupons();
     }
 
+    // returns total of principal of all tokens
     function totalRepaymentAmount() public view returns (uint256){
         return principalAmount * totalSupply();
     }
 
-    // add address of new token holder and transfer token
+    // makes sure the right aoumont of redeemed coupons of saved for the new owner of the tokens before transfering them 
     function transfer(address to, uint256 amount) public override returns (bool) {
         // check if recipient already owns tokens
         // if not set couponsRedeemed to the same value as sender
         if(balanceOf(to) == 0) couponsRedeemed[to] = couponsRedeemed[msg.sender];
-        // if recipient already owns tokens check if they have both the same number of coupons redeemed and cancel the transaction otherwise
+        // if recipient already owns tokens check if both have the same number of coupons redeemed and cancel the transaction otherwise
+        // note that it is possible to transfer tokens with unredeemed coupons if the recipient has not redeemed his coupon either
         else require(couponsRedeemed[to] == couponsRedeemed[msg.sender], "Make sure both parties have redeemed coupons");
         return super.transfer(to, amount);
     }
 
-    // add address of new token holder and transfer token from allowance
+    // makes sure the right aoumont of redeemed coupons of saved for the new owner of the tokens before transfering them
     function transferFrom(address from, address to, uint256 value) public override returns (bool){
         // check if recipient already owns tokens
         // if not set couponsRedeemed to the same value as from address
@@ -112,6 +120,7 @@ contract SmartBondToken is ERC20 {
         return super.transferFrom(from, to, value);
     }
 
+    // buy new tokens
     function buyTokens(uint256 numTokens) external payable {
         require(totalSupply() + numTokens <= maxSupply, "Exceeds maximum supply");
 
@@ -144,6 +153,7 @@ contract SmartBondToken is ERC20 {
         }
     }
 
+    // make payments for all coupons including the upcoming one
     function payCoupon() external payable {
         require(msg.sender == issuer, "Only issuer can make coupon payments");
         require(unpaidCoupons() > 0, "All Coupons have been paid");
@@ -163,6 +173,7 @@ contract SmartBondToken is ERC20 {
         isRepaid = true;
     }
 
+    // returns the number of coupon payments that have been done by the issuer but have not been redeemed yet
     function redeemableCouponsOf(address _address) public view returns(uint256){
         uint256 redeemableCoupons = period() - 1;
 
@@ -175,7 +186,7 @@ contract SmartBondToken is ERC20 {
         return redeemableCoupons - couponsRedeemed[_address];
     }
 
-    //redeem pricipal and last coupon after maturity is reached
+    // returns the total amount of the coupon payments that have been done by the issuer but have not been redeemed yet
     function redeemableAmountOf(address _address) public view returns(uint256) {
 
         // calculate the total value to be send to the tokenholder without principal
@@ -192,6 +203,7 @@ contract SmartBondToken is ERC20 {
         return _totalValue;    
     }
 
+    //redeem pricipal and coupon if possible
     function redeem() external{
         require(balanceOf(msg.sender) > 0, "Only token holders can redeem the bond");
         
